@@ -65,3 +65,22 @@ void coalesce_blocks(Block* curr) {
         }
     }
 }
+
+// frees the memory passed by the user(The user doesnot pass the header so we navigate to it)
+void my_free(void *ptr) {
+    if(ptr == NULL) return;
+
+    Block* curr = (Block*)((char*)ptr - sizeof(Block));
+    curr->is_free = 1;
+
+    curr->next = free_list_head;
+    curr->prev = NULL;
+
+    if(free_list_head != NULL) {
+        free_list_head->prev = curr;
+    }
+
+    free_list_head = curr;
+
+    coalesce_blocks(curr);
+}
