@@ -1,5 +1,8 @@
 #include <stdio.h>
 #include <stddef.h>
+#include <sys/mman.h>
+
+#define HEAP_SIZE (1024 * 1024)
 
 typedef struct Block {
     size_t size;
@@ -83,4 +86,23 @@ void my_free(void *ptr) {
     free_list_head = curr;
 
     coalesce_blocks(curr);
+}
+
+// Gets 1MB of memory from OS and links to head for further usage
+void init_heap() {
+    if(free_list_head != NULL) return;
+
+    void* raw_memory = mmap(NULL, HEAP_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+
+    if(raw_memory == MAP_FAILED) {
+        printf("System Error: mmap failed to allocate memory");
+        return;
+    }
+
+    free_list_head = (Block*)raw_memory;
+
+    free_list_head->size = HEAP_SIZE - sizeof(Block);
+    free_list_head->is_free = 1;
+    free_list_head->next = NULL;
+    free_list_head->prev = NULL;
 }
