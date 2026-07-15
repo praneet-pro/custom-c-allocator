@@ -106,3 +106,66 @@ void init_heap() {
     free_list_head->next = NULL;
     free_list_head->prev = NULL;
 }
+
+// Gets the memory to the user
+void* my_malloc(size_t size) {
+    if(size == 0) return NULL;
+
+    if(free_list_head == NULL) {
+        init_heap();
+    }
+
+    Block* found_block = find_free_block(size);
+
+    if(found_block == NULL) {
+        printf("Error: Out of memory.\n");
+        return NULL;
+    }
+
+    split_block(found_block, size);
+
+    return (void*)((char*)found_block + sizeof(Block));
+}
+
+
+int main() {
+    printf("--- BOOTING CUSTOM ALLOCATOR ---\n\n");
+
+    // 1. Allocate a string
+    printf("[1] Allocating 50 bytes for a string...\n");
+    char* name = (char*)my_malloc(50);
+    
+    if (name != NULL) {
+        printf("    SUCCESS! Payload address: %p\n", (void*)name);
+        // Let's prove we can write to it without crashing
+        sprintf(name, "Linus Torvalds");
+        printf("    Data stored: %s\n\n", name);
+    }
+
+    // 2. Allocate an array of integers
+    printf("[2] Allocating 100 bytes for an integer array...\n");
+    int* numbers = (int*)my_malloc(100);
+    
+    if (numbers != NULL) {
+        printf("    SUCCESS! Payload address: %p\n", (void*)numbers);
+        numbers[0] = 42;
+        printf("    Data stored: %d\n\n", numbers[0]);
+    }
+
+    // 3. Prove the Chainsaw worked (Pointer Math)
+    // If the 32-byte header exists, the distance between the two payload addresses
+    // should be exactly: 50 bytes (first payload) + 32 bytes (second header) = 82 bytes!
+    printf("[3] Checking the physical layout...\n");
+    size_t distance = (char*)numbers - (char*)name;
+    printf("    Distance between allocations: %zu bytes\n\n", distance);
+
+    // 4. Free the memory (Triggering coalescing)
+    printf("[4] Freeing memory...\n");
+    my_free(name);
+    printf("    Freed 'name'.\n");
+    my_free(numbers);
+    printf("    Freed 'numbers'.\n\n");
+
+    printf("--- SYSTEM SHUTDOWN CLEAN ---\n");
+    return 0;
+}
