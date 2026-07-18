@@ -11,7 +11,7 @@ typedef struct Block {
     struct Block* prev;
 } Block;
 
-Block* free_list_head = NULL;
+static Block* free_list_head = NULL;
 
 // Searches for free block 
 Block* find_free_block(size_t required_size) {
@@ -115,14 +115,16 @@ void* my_malloc(size_t size) {
         init_heap();
     }
 
-    Block* found_block = find_free_block(size);
+    size_t alligned_size = (size + 15) & ~15;
+
+    Block* found_block = find_free_block(alligned_size);
 
     if(found_block == NULL) {
         printf("Error: Out of memory.\n");
         return NULL;
     }
 
-    split_block(found_block, size);
+    split_block(found_block, alligned_size);
 
     return (void*)((char*)found_block + sizeof(Block));
 }
