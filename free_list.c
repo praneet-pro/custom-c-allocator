@@ -12,6 +12,7 @@ typedef struct Block {
 } Block;
 
 static Block* free_list_head = NULL;
+static void* heap_start = NULL;
 
 // Searches for free block 
 Block* find_free_block(size_t required_size) {
@@ -30,42 +31,84 @@ Block* find_free_block(size_t required_size) {
 // Splits the free block to prevent wasteage of memory
 // Gives the required memory size
 void split_block(Block* total_block, size_t required_size) {
-    size_t remaining_size = total_block->size - required_size - sizeof(Block);
+    // CASE 1: No split
+    if(total_block->size <= required_size + sizeof(Block)) {
+        if(total_block->prev != NULL) {
+            total_block->prev->next = total_block->next;
+        } else {
+            free_list_head = total_block->next;
+        }
 
-    if(remaining_size <= sizeof(Block)) {
+        if(total_block->next != NULL) {
+            total_block->next->prev = total_block->prev;
+        } 
+
+        total_block->is_free = 0;
         return;
     }
 
-    Block* new_block = (Block*)((char*)total_block + sizeof(Block) + required_size);
+    // CASE 2: Split
+    size_t remaining_size = total_block->size - required_size - sizeof(Block);
 
+    Block* new_block = (Block*)((char*)total_block + sizeof(Block) + required_size);
     new_block->size = remaining_size;
     new_block->is_free = 1;
 
     new_block->next = total_block->next;
-    new_block->prev = total_block;
+    new_block->prev = total_block->prev;
 
-    if(total_block->next != NULL) {
-        total_block->next->prev = new_block;
+    if(new_block->prev != NULL) {
+        new_block->prev->next = new_block;
+    } else {
+        free_list_head = new_block;
     }
 
-    total_block->next = new_block;
+    if(new_block->next != NULL) {
+        new_block->next->prev = new_block;
+    }
+
     total_block->size = required_size;
     total_block->is_free = 0;
 }
 
 // Stiches the physically neighbouring free blocks together
 void coalesce_blocks(Block* curr) {
+    // --- MERGE RIGHT ---
     Block* physical_right = (Block*)((char*)curr + sizeof(Block) + curr->size);
 
-    if(physical_right->is_free) {
-        curr->size = curr->size + sizeof(Block) + physical_right->size;
+    if ((char*)physical_right < ((char*)heap_start + HEAP_SIZE)) {
+        if(physical_right->is_free) {
+            curr->size = curr->size + sizeof(Block) + physical_right->size;
 
-        if(physical_right->prev != NULL) {
-            physical_right->prev->next = physical_right->next;
+            if(physical_right->prev != NULL) {
+                physical_right->prev->next = physical_right->next;
+            }
+            if(physical_right->next != NULL) {
+                physical_right->next->prev = physical_right->prev;
+            }
         }
-        if(physical_right->next != NULL) {
-            physical_right->next->prev = physical_right->prev;
+    }
+
+    // --- MERGE LEFT ---
+    Block* temp = free_list_head;
+    while(temp != NULL) {
+        Block* its_physical_right = (Block*)((char*)temp + sizeof(Block) + temp->size);
+        
+        if (its_physical_right == curr) {
+            temp->size = temp->size + sizeof(Block) + curr->size;
+            
+            if(curr->prev != NULL) {
+                curr->prev->next = curr->next;
+            } else {
+                free_list_head = curr->next;
+            }
+            
+            if(curr->next != NULL) {
+                curr->next->prev = curr->prev;
+            }
+            break; // We can only have one physical left neighbor, so stop searching
         }
+        temp = temp->next;
     }
 }
 
@@ -101,6 +144,8 @@ void init_heap() {
 
     free_list_head = (Block*)raw_memory;
 
+    heap_start = raw_memory;
+
     free_list_head->size = HEAP_SIZE - sizeof(Block);
     free_list_head->is_free = 1;
     free_list_head->next = NULL;
@@ -127,47 +172,4 @@ void* my_malloc(size_t size) {
     split_block(found_block, alligned_size);
 
     return (void*)((char*)found_block + sizeof(Block));
-}
-
-
-int main() {
-    printf("--- BOOTING CUSTOM ALLOCATOR ---\n\n");
-
-    // 1. Allocate a string
-    printf("[1] Allocating 50 bytes for a string...\n");
-    char* name = (char*)my_malloc(50);
-    
-    if (name != NULL) {
-        printf("    SUCCESS! Payload address: %p\n", (void*)name);
-        // Let's prove we can write to it without crashing
-        sprintf(name, "Linus Torvalds");
-        printf("    Data stored: %s\n\n", name);
-    }
-
-    // 2. Allocate an array of integers
-    printf("[2] Allocating 100 bytes for an integer array...\n");
-    int* numbers = (int*)my_malloc(100);
-    
-    if (numbers != NULL) {
-        printf("    SUCCESS! Payload address: %p\n", (void*)numbers);
-        numbers[0] = 42;
-        printf("    Data stored: %d\n\n", numbers[0]);
-    }
-
-    // 3. Prove the Chainsaw worked (Pointer Math)
-    // If the 32-byte header exists, the distance between the two payload addresses
-    // should be exactly: 50 bytes (first payload) + 32 bytes (second header) = 82 bytes!
-    printf("[3] Checking the physical layout...\n");
-    size_t distance = (char*)numbers - (char*)name;
-    printf("    Distance between allocations: %zu bytes\n\n", distance);
-
-    // 4. Free the memory (Triggering coalescing)
-    printf("[4] Freeing memory...\n");
-    my_free(name);
-    printf("    Freed 'name'.\n");
-    my_free(numbers);
-    printf("    Freed 'numbers'.\n\n");
-
-    printf("--- SYSTEM SHUTDOWN CLEAN ---\n");
-    return 0;
 }
