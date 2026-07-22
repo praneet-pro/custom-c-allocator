@@ -14,14 +14,14 @@ A lightweight, custom memory allocator written in C that replaces standard `mall
 
 The allocator manages memory by prepending a 32-byte header to every memory block. 
 
-\`\`\`c
+```c
 typedef struct Block {
     size_t size;           // Size of the usable memory payload
     int is_free;           // Allocation status flag
     struct Block* next;    // Pointer to the next free block
     struct Block* prev;    // Pointer to the previous free block
 } Block;
-\`\`\`
+```
 
 When a user requests memory, the allocator searches the free list, splits the block if necessary to prevent internal fragmentation, and returns a pointer to the usable payload space. When memory is freed, pointer arithmetic is used to step backward into the header, mark it as free, and wire it back into the list.
 
@@ -42,25 +42,25 @@ The benchmark simulates heavy, real-world memory fragmentation by executing 1,00
 This project includes a `Makefile` for automated compilation on Linux environments.
 
 **1. Clone the repository:**
-\`\`\`bash
-git clone https://github.com/praneet-pro/custome-c-allocator.git
-cd sys-allocator
-\`\`\`
+```bash
+git clone [https://github.com/praneet-pro/custom-c-allocator.git](https://github.com/praneet-pro/custom-c-allocator.git)
+cd custom-c-allocator
+```
 
 **2. Build the project:**
-\`\`\`bash
+```bash
 make
-\`\`\`
+```
 
 **3. Run the chaos benchmark:**
-\`\`\`bash
+```bash
 ./benchmark
-\`\`\`
+```
 
 **4. Verify memory safety with Valgrind:**
-\`\`\`bash
+```bash
 valgrind --leak-check=full ./benchmark
-\`\`\`
+```
 
 ## 🛡️ Valgrind Memory Proof
 
@@ -80,3 +80,5 @@ Custom malloc chaos time: 1.546933 seconds
 ==9473== All heap blocks were freed -- no leaks are possible
 ==9473== 
 ==9473== ERROR SUMMARY: 0 errors from 0 contexts (suppressed: 0 from 0)
+```
+*(Note: Execution time reflects the overhead of running inside the Valgrind profiler)*
