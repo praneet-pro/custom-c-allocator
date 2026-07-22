@@ -42,8 +42,7 @@ The benchmark simulates heavy, real-world memory fragmentation by executing 1,00
 This project includes a `Makefile` for automated compilation on Linux environments.
 
 **1. Clone the repository:**
-```bash
-git clone [https://github.com/praneet-pro/custom-c-allocator.git](https://github.com/praneet-pro/custom-c-allocator.git)
+```bashgit clone https://github.com/praneet-pro/custom-c-allocator.git
 cd custom-c-allocator
 ```
 
