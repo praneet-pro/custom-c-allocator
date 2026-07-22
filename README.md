@@ -43,7 +43,7 @@ This project includes a `Makefile` for automated compilation on Linux environmen
 
 **1. Clone the repository:**
 \`\`\`bash
-git clone https://github.com/YOUR_USERNAME/sys-allocator.git
+git clone https://github.com/praneet-pro/sys-allocator.git
 cd sys-allocator
 \`\`\`
 
