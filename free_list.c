@@ -89,6 +89,9 @@ void coalesce_blocks(Block* curr) {
             if(physical_right->prev != NULL) {
                 physical_right->prev->next = physical_right->next;
             }
+            else {
+                free_list_head = physical_right->next;
+            }
             if(physical_right->next != NULL) {
                 physical_right->next->prev = physical_right->prev;
             }
@@ -109,6 +112,16 @@ void coalesce_blocks(Block* curr) {
 
             Block** new_footer = (Block**)((char*)physical_left + sizeof(Block) + physical_left->size);
             *new_footer = physical_left;
+
+            if(curr->prev != NULL) {
+                curr->prev->next = curr->next;
+            }
+            else {
+                free_list_head = curr->next;
+            }
+            if(curr->next != NULL) {
+                curr->next->prev = curr->prev;
+            }
 
             curr = physical_left;
         }
