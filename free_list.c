@@ -5,11 +5,17 @@
 #define HEAP_SIZE (1024 * 1024)
 
 typedef struct Block {
-    size_t size;
-    int is_free;
+    size_t size;        // holds both the size and free/alloc flag
     struct Block* next;
     struct Block* prev;
 } Block;
+
+// Bitwise Macros for O(1) inline speed
+#define GET_SIZE(block) ((block)->size & ~1)
+#define IS_FREE(block)  ((block)->size & 1)
+#define SET_FREE(block) ((block)->size |= 1)
+#define SET_ALLOC(block) ((block)->size &= ~1)
+#define SET_SIZE_AND_FLAG(block, new_size, free_flag) ((block)->size = (new_size) | (free_flag))
 
 static Block* free_list_head = NULL;
 static void* heap_start = NULL;
@@ -19,7 +25,7 @@ Block* find_free_block(size_t required_size) {
     Block* curr = free_list_head;
 
     while(curr != NULL) {
-        if(curr->size >= required_size) 
+        if(GET_SIZE(curr) >= required_size) 
             return curr;
 
         curr = curr->next;
@@ -31,8 +37,10 @@ Block* find_free_block(size_t required_size) {
 // Splits the free block to prevent wasteage of memory
 // Gives the required memory size
 void split_block(Block* total_block, size_t required_size) {
-    // CASE 1: No split
-    if(total_block->size <= required_size + sizeof(Block)) {
+    size_t total_size = GET_SIZE(total_block);
+
+    // CASE 1: No split, Removing the block from free list
+    if(total_size <= required_size + sizeof(Block) + sizeof(Block*)) {
         if(total_block->prev != NULL) {
             total_block->prev->next = total_block->next;
         } else {
@@ -43,16 +51,22 @@ void split_block(Block* total_block, size_t required_size) {
             total_block->next->prev = total_block->prev;
         } 
 
-        total_block->is_free = 0;
+        SET_ALLOC(total_block);
         return;
     }
 
     // CASE 2: Split
-    size_t remaining_size = total_block->size - required_size - sizeof(Block);
+    size_t remaining_size = total_size - required_size - sizeof(Block) - sizeof(Block*);
 
-    Block* new_block = (Block*)((char*)total_block + sizeof(Block) + required_size);
-    new_block->size = remaining_size;
-    new_block->is_free = 1;
+    Block* new_block = (Block*)((char*)total_block + sizeof(Block) + required_size + sizeof(Block*));
+    
+    SET_SIZE_AND_FLAG(new_block, remaining_size, 1);
+
+    Block** total_footer = (Block**)((char*)total_block + sizeof(Block) + required_size);
+    *total_footer = total_block;
+
+    Block** new_footer = (Block**)((char*)new_block + sizeof(Block) + remaining_size);
+    *new_footer = new_block;
 
     new_block->next = total_block->next;
     new_block->prev = total_block->prev;
@@ -67,48 +81,65 @@ void split_block(Block* total_block, size_t required_size) {
         new_block->next->prev = new_block;
     }
 
-    total_block->size = required_size;
-    total_block->is_free = 0;
+    SET_SIZE_AND_FLAG(total_block, required_size, 0);
 }
 
 // Stiches the physically neighbouring free blocks together
 void coalesce_blocks(Block* curr) {
+    size_t curr_size = GET_SIZE(curr);
     // --- MERGE RIGHT ---
-    Block* physical_right = (Block*)((char*)curr + sizeof(Block) + curr->size);
+    Block* physical_right = (Block*)((char*)curr + sizeof(Block) + curr_size + sizeof(Block*));
 
     if ((char*)physical_right < ((char*)heap_start + HEAP_SIZE)) {
-        if(physical_right->is_free) {
-            curr->size = curr->size + sizeof(Block) + physical_right->size;
+        if(IS_FREE(physical_right)) {
+             size_t right_size = GET_SIZE(physical_right);
+
+            size_t new_size = curr_size + sizeof(Block) + right_size + sizeof(Block*);
+            SET_SIZE_AND_FLAG(curr, new_size, 1);
 
             if(physical_right->prev != NULL) {
                 physical_right->prev->next = physical_right->next;
             }
+            else {
+                free_list_head = physical_right->next;
+            }
             if(physical_right->next != NULL) {
                 physical_right->next->prev = physical_right->prev;
             }
+
+            Block** right_footer = (Block**)((char*)curr + sizeof(Block) + new_size);
+            *right_footer = curr;
+
+            curr_size = new_size;
         }
     }
 
     // --- MERGE LEFT ---
-    Block* temp = free_list_head;
-    while(temp != NULL) {
-        Block* its_physical_right = (Block*)((char*)temp + sizeof(Block) + temp->size);
-        
-        if (its_physical_right == curr) {
-            temp->size = temp->size + sizeof(Block) + curr->size;
-            
+    if((void*)curr > heap_start) {
+        Block** left_footer = (Block**)((char*)curr - sizeof(Block*));
+        Block* physical_left = *left_footer;
+
+        if(IS_FREE(physical_left)) {
+            size_t left_size = GET_SIZE(physical_left);
+
+            size_t new_size = left_size + sizeof(Block) + sizeof(Block*) + curr_size;
+            SET_SIZE_AND_FLAG(physical_left, new_size, 1);
+
+            Block** new_footer = (Block**)((char*)physical_left + sizeof(Block) + new_size);
+            *new_footer = physical_left;
+
             if(curr->prev != NULL) {
                 curr->prev->next = curr->next;
-            } else {
+            }
+            else {
                 free_list_head = curr->next;
             }
-            
             if(curr->next != NULL) {
                 curr->next->prev = curr->prev;
             }
-            break; // We can only have one physical left neighbor, so stop searching
+
+            curr = physical_left;
         }
-        temp = temp->next;
     }
 }
 
@@ -117,7 +148,7 @@ void my_free(void *ptr) {
     if(ptr == NULL) return;
 
     Block* curr = (Block*)((char*)ptr - sizeof(Block));
-    curr->is_free = 1;
+    SET_FREE(curr);
 
     curr->next = free_list_head;
     curr->prev = NULL;
@@ -146,10 +177,14 @@ void init_heap() {
 
     heap_start = raw_memory;
 
-    free_list_head->size = HEAP_SIZE - sizeof(Block);
-    free_list_head->is_free = 1;
+    size_t initial_size = HEAP_SIZE - sizeof(Block) - sizeof(Block*);
+    SET_SIZE_AND_FLAG(free_list_head, initial_size, 1);
+
     free_list_head->next = NULL;
     free_list_head->prev = NULL;
+
+    Block** footer = (Block**)((char*)free_list_head + sizeof(Block) + initial_size);
+    *footer = free_list_head;
 }
 
 // Gets the memory to the user
